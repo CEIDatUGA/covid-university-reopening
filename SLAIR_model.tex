@@ -1,0 +1,156 @@
+%% LyX 2.3.3 created this file.  For more info, see http://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+\documentclass[oneside,english]{amsart}
+\usepackage[T1]{fontenc}
+\usepackage[latin9]{inputenc}
+\usepackage{geometry}
+\geometry{verbose,tmargin=1in,bmargin=1in}
+\usepackage{mathrsfs}
+\usepackage{amsthm}
+
+\makeatletter
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\numberwithin{equation}{section}
+\numberwithin{figure}{section}
+
+\makeatother
+
+\usepackage{babel}
+\begin{document}
+\title{Model for transmission of SARS-CoV-2 on a university campus}
+
+\maketitle
+The system of ordinary differential equations for this model is
+\begin{align*}
+\dot{S} & =-\beta\left(I+b_{L}L+b_{A}A\right)S,\\
+\dot{L} & =\left(1-a\right)\beta\left(I+b_{L}L+b_{A}A\right)S-\left(\sigma+\xi\right)L,\\
+\dot{A} & =a\beta\left(I+b_{L}L+b_{A}A\right)S-\left(\gamma_{A}+\xi\right)A,\\
+\dot{I} & =\sigma L-\gamma_{I}I,\\
+\dot{R} & =\gamma_{I}I+\gamma_{A}A+\xi L+\xi A.
+\end{align*}
+We can simplify the notation by defining
+\begin{align*}
+f & =\left(1-a\right)\beta\left(I+b_{L}L+b_{A}A\right),\\
+g & =a\beta\left(I+b_{L}L+b_{A}A\right)
+\end{align*}
+Let $N=S+L+A+I+R$ represent the total population. Then $\dot{N}=0$.
+Thus the disease-free equilibrium is given by $S_{0}=N\left(0\right)-R\left(0\right)$,
+and all other state variables are equal to zero.
+
+The infectious compartments are represented by $L$, $A$, and $I$.
+Let $x$ be the vector of state variables, ordered with infected compartments
+first: $x=\left(L,A,I,S,R\right)$. The DFE is then $x_{0}=\left(0,0,0,S_{0},R_{0}\right)$.
+Define $\mathscr{F}$ and $\mathscr{V}$ to be the rate of new infections
+and net rate out (for any other transition), for the infected compartments:
+\[
+\mathscr{F}\left(x\right)=\begin{pmatrix}\left(1-a\right)\beta\left(I+b_{L}L+b_{A}A\right)S\\
+a\beta\left(I+b_{L}L+b_{A}A\right)S\\
+0
+\end{pmatrix},\,\mathscr{V}\left(x\right)=\begin{pmatrix}\left(\sigma+\xi\right)L\\
+\left(\gamma_{A}+\xi\right)A\\
+\gamma_{I}I-\sigma L
+\end{pmatrix}
+\]
+Let $F=D_{x}\mathscr{F}\left(x_{0}\right)$ and $V=D_{x}\mathscr{V}\left(x_{0}\right)$
+where
+\begin{align*}
+D_{x}\mathscr{F}\left(x\right) & =\begin{pmatrix}\left(1-a\right)\beta Sb_{L} & \left(1-a\right)\beta Sb_{A} & \left(1-a\right)\beta S\\
+a\beta Sb_{L} & a\beta Sb_{A} & a\beta S\\
+0 & 0 & 0
+\end{pmatrix},\\
+D_{x}\mathscr{V}\left(x\right) & =\begin{pmatrix}\left(\sigma+\xi\right) & 0 & 0\\
+0 & \left(\gamma_{A}+\xi\right) & 0\\
+-\sigma & 0 & \gamma_{I}
+\end{pmatrix}
+\end{align*}
+Thus 
+\begin{align*}
+F & =\begin{bmatrix}\left(1-a\right)\beta b_{L}S_{0} & \left(1-a\right)\beta b_{A}S_{0} & \left(1-a\right)\beta S_{0}\\
+a\beta S_{0}b_{L} & a\beta S_{0}b_{A} & a\beta S_{0}\\
+0 & 0 & 0
+\end{bmatrix},\\
+V & =\begin{bmatrix}\left(\sigma+\xi\right) & 0 & 0\\
+0 & \left(\gamma_{A}+\xi\right) & 0\\
+-\sigma & 0 & \gamma_{I}
+\end{bmatrix}.
+\end{align*}
+The basic reproduction number is defined as the spectral radius of
+the next generation matrix $K=FV^{-1}$ which is given by:
+\begin{align*}
+K & =\begin{bmatrix}\left(1-a\right)\beta b_{L}S_{0} & \left(1-a\right)\beta b_{A}S_{0} & \left(1-a\right)\beta S_{0}\\
+a\beta S_{0}b_{L} & a\beta S_{0}b_{A} & a\beta S_{0}\\
+0 & 0 & 0
+\end{bmatrix}\begin{bmatrix}1/\left(\sigma+\xi\right) & 0 & 0\\
+0 & 1/\left(\gamma_{A}+\xi\right) & 0\\
+\sigma/\gamma_{I}\left(\sigma+\xi\right) & 0 & 1/\gamma_{I}
+\end{bmatrix}\\
+ & =\beta S_{0}\begin{bmatrix}\left(1-a\right)b_{L} & \left(1-a\right)b_{A} & \left(1-a\right)\\
+ab_{L} & ab_{A} & a\\
+0 & 0 & 0
+\end{bmatrix}\begin{bmatrix}1/\left(\sigma+\xi\right) & 0 & 0\\
+0 & 1/\left(\gamma_{A}+\xi\right) & 0\\
+\sigma/\gamma_{I}\left(\sigma+\xi\right) & 0 & 1/\gamma_{I}
+\end{bmatrix}\\
+ & =\beta S_{0}\begin{bmatrix}\left(1-a\right)\left[b_{L}\frac{1}{\sigma+\xi}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right] & \left(1-a\right)b_{A}\left(\frac{1}{\gamma_{A}+\xi}\right) & \left(1-a\right)\left(\frac{1}{\gamma_{I}}\right)\\
+a\left[b_{L}\frac{1}{\sigma+\xi}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right] & ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right) & a\left(\frac{1}{\gamma_{I}}\right)\\
+0 & 0 & 0
+\end{bmatrix}
+\end{align*}
+To simplify this calculation, let $c_{1}=\beta S_{0}\left[b_{L}\frac{1}{\sigma+\xi}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right]$,
+$c_{2}=\beta S_{0}b_{A}\left(\frac{1}{\gamma_{A}+\xi}\right)$ and
+$c_{3}=\beta S_{0}\frac{1}{\gamma_{I}}$. Then $K$ can be written
+simply as:
+\[
+K=\begin{bmatrix}\left(1-a\right)c_{1} & \left(1-a\right)c_{2} & \left(1-a\right)c_{3}\\
+ac_{1} & ac_{2} & ac_{3}\\
+0 & 0 & 0
+\end{bmatrix}
+\]
+and the eigenvalues of $K$ are zero (multiplicity 2) and, the largest
+eigenvalue, $\left(1-a\right)c_{1}+ac_{2}$. This last eigenvalue
+must be the spectral radius. Substituting back in the original parameters,
+we obtain: 
+\[
+\mathcal{R}_{0}=\beta S_{0}\left(1-a\right)\left[b_{L}\frac{1}{\left(\sigma+\xi\right)}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right]+\beta S_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right)
+\]
+This can be decomposed to represent the contribution to the basic
+reproduction number of the symptomatic ($\mathcal{R}_{L}+\mathcal{R}_{I}$)
+and asymptomatic classes ($\mathcal{R}_{A}$):
+\begin{align*}
+\mathcal{R}_{L} & =\beta S_{0}\left(1-a\right)b_{L}\frac{1}{\left(\sigma+\xi\right)},\\
+\mathcal{R}_{I} & =\beta S_{0}\left(1-a\right)\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right),\\
+\mathcal{R}_{A} & =\beta S_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right).
+\end{align*}
+
+
+\section*{Finding the critical value of $\xi$}
+
+The testing rate, $\xi$, is an important control parameter. The basic
+reproduction number can be brought below unity by increasing this
+value. We compute the value $\xi_{c}$ at which $\mathcal{R}_{0}=1$.
+\begin{align*}
+1 & =\beta S_{0}\left(1-a\right)\left[b_{L}\frac{1}{\left(\sigma+\xi_{c}\right)}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi_{c}}\right)\right]+\beta S_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi_{c}}\right)\\
+\left(\sigma+\xi_{c}\right)\left(\gamma_{A}+\xi_{c}\right) & =\beta S_{0}\left[\left(\gamma_{A}+\xi_{c}\right)\left(1-a\right)\left(b_{L}+\frac{1}{\gamma_{I}}\sigma\right)+\left(\sigma+\xi_{c}\right)ab_{A}\right]
+\end{align*}
+Define the following reproduction numbers without control:
+\begin{align*}
+\mathcal{R}_{L0} & =\beta S_{0}\left(1-a\right)b_{L}\frac{1}{\sigma},\\
+\mathcal{R}_{I0} & =\beta S_{0}\left(1-a\right)\frac{1}{\gamma_{I}},\\
+\mathcal{R}_{A0} & =\beta S_{0}ab_{A}\frac{1}{\gamma_{A}},\\
+\mathcal{R}_{0} & =\mathcal{R}_{L0}+\mathcal{R}_{I0}+\mathcal{R}_{A0}.
+\end{align*}
+Then the above simplfies to the following equation:
+\begin{align*}
+\xi_{c}^{2}+\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]\xi_{c}+\sigma\gamma_{A}\left(1-\mathcal{R}_{0}\right)=0
+\end{align*}
+This can have two solutions:
+\[
+\xi^{\pm}=-\frac{1}{2}\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]\pm\frac{1}{2}\sqrt{\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]^{2}+4\sigma\gamma_{A}\left(\mathcal{R}_{0}-1\right)},
+\]
+only one of which is positive since $\xi^{+}\xi^{-}=\sigma\gamma_{A}\left(1-\mathcal{R}_{0}\right)<0$.
+Hence the critical value of $\xi$ is:
+\[
+\xi_{c}=-\frac{1}{2}\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]+\frac{1}{2}\sqrt{\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]^{2}+4\sigma\gamma_{A}\left(\mathcal{R}_{0}-1\right)}.
+\]
+
+\end{document}

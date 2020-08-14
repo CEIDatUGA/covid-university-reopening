@@ -1,0 +1,695 @@
+---
+title: "Scenario analysis for an outbreak of COVID-19 on a university campus"
+author: "John M. Drake"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    keep_tex: yes
+    includes:
+      in_header: header.tex
+  html_document:
+    df_print: paged
+  word_document: default
+abstract: Significant uncertanties remain concerning the opening of college and university campuses in the United States due to COVID-19. We assembled quantitative empirical information about several processes likely to affect the transmission of SARS-CoV-2 within institutions of higher education. Preliminary results suggest that campuses should anticipate explosive localized outbreaks and be prepared for significant levels of transmission associated with the congregation of students.
+keywords: COVID-19, coronavirus, non-pharmaceutical interventions, SARS-CoV-2
+link-citations: yes
+csl: proceedings-of-the-royal-society-b.csl
+bibliography: covid-reopening.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, cache=FALSE, warning=FALSE)
+
+library(pomp)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(here)
+library(fields)
+library(gridExtra)
+library(knitr)
+library(scales)
+library(lhs)
+library(sensitivity)
+```
+
+```{r set-graphics}
+theme_set(theme_minimal())
+```
+
+```{r parameters}
+# General parameters
+a <- 0.45 # proportion asymptomatic
+a_min <- .4 # min asymptomatic
+a_max <- .6 # max asymptomatic
+bL <- 0.3
+bA <- 0.5
+gammaSymp <- 4 # symptomatic infectious period
+gammaI <- 1/1
+gammaA <- 1/14
+sigma <- 1/4
+sigma_min <- 1/5
+sigma_max <- 1/3
+theta <- 100
+
+# University parameters
+Ntot <- 50000
+N_stud <- Ntot*.78 # 78% of population are students
+N_staff <- Ntot - N_stud
+dailytests <- 300
+maxTime <- 1000
+xi <- dailytests/Ntot # Control parameter (testing rate)
+
+# Intervention parameters
+trans_airborne <- .2
+trans_droplets <- .4
+trans_contact <- .4
+reduction_masks <- 0.65
+reduction_cleaning <- 0.75 # healthy workplace
+reduction_tot <- reduction_masks*(trans_airborne + trans_droplets) + reduction_cleaning*trans_contact
+
+# University-specific interaction parameters
+inter_stud_stud <- N_stud^2 - N_stud
+inter_stud_staff <- N_stud*N_staff
+inter_staff_staff <- N_staff^2 - N_staff
+inter_tot <- inter_stud_stud+inter_stud_staff+inter_staff_staff
+hours_oncampus <- 15 # hours per week (students)
+hours_sleep <- 7*8 # hourse sleep / week
+hours_offcampus <-  7*24 - hours_oncampus - hours_sleep # hjours off-campus activity per week
+compliance_stud <- hours_oncampus/(hours_oncampus+hours_offcampus)
+compliance_staff <- 1
+reduction_stud_stud <- reduction_tot * compliance_stud * (inter_stud_stud / inter_tot)
+reduction_stud_staff <- reduction_tot * compliance_staff * (inter_stud_staff / inter_tot)
+reduction_staff_staff <- reduction_tot * compliance_staff * (inter_staff_staff / inter_tot)
+reduction_allinteractions <- reduction_stud_stud + reduction_stud_staff + reduction_staff_staff
+
+# parameter to reduce transmissibility for generalized interventions, expressed as a fraction of natural transmissibility
+generalized <- 1-reduction_allinteractions
+
+# Here we solve for beta given a specified R0, setting \xi to 0
+findBeta <- function(R0, Ntot, a, bL, sigma, gammaI, bA, gammaA) {
+  R0*(Ntot*(1-a)*(bL/sigma+1/gammaI)+Ntot*a*bA/gammaA)^(-1)
+}
+beta <- findBeta(R0=3, Ntot=Ntot, a=a, bL=bL, sigma=sigma, gammaI=gammaI, bA=bA, gammaA=gammaA)
+
+# Evaluate R0
+estimateR0 <- function(beta, Ntot, a, bL, sigma, gammaI, bA, gammaA, xi){
+  beta*Ntot*(1-a)*(bL/(sigma+xi)+sigma/(gammaI*(sigma+xi))) + beta*Ntot*a*bA*(1/(gammaA+xi))
+}
+
+# Basic Reporduction Number with and without interventions
+R0 <- estimateR0(beta=beta, Ntot=Ntot, a=a, bL=bL, sigma=sigma, gammaI=gammaI, bA=bA, gammaA=gammaA, xi=xi)
+R0interventions <- generalized*R0
+```
+
+```{r model}
+source('code/make-university-model.R')
+source('code/functions.R')
+```
+
+```{r initial_condition}
+# State of Georgia
+cases_7_day_average <- 3500 # 7 day average of case reports, Georgia, Aug 11, 2020
+reporting_min <- .25 # reporting probability
+reporting_max <- 1.0 # reporting probability
+dailyreportable_min <- cases_7_day_average/reporting_max # reportable cases
+dailyreportable_max <- cases_7_day_average/reporting_min # reportable cases
+active_min <- dailyreportable_min*(1/sigma_max + gammaSymp) # active cases
+active_max <- dailyreportable_max*(1/sigma_min + gammaSymp) # active cases
+infected_min <- active_min/(1-a_min) # current infections
+infected_max <- active_max/(1-a_max) # current infections
+pop_GA <- 10456145 # population of Georgia
+pop_GA_18_29 <- 1737053 # population of Georgia in the 18-29 age range
+pop_GA_percent_18_29 <- pop_GA_18_29/pop_GA # % of population in 18-29 range
+cases_GA_percent_18_29 <- .223 # % cases in 18-29 range, Jul 16 - Aug 11, GDPH
+prev_min <- infected_min/pop_GA # prevalence
+prev_max <- infected_max/pop_GA # prevalence
+cases_cum <- 204895 # GDPH
+cases_cum_18_29 <- 49423 # GDPH
+rel_prev_18_29 <- cases_GA_percent_18_29/pop_GA_percent_18_29 # relative prevalence of 18-29
+prev_18_29_min <- prev_min*rel_prev_18_29 # prevalence, 18-29
+prev_18_29_max <- prev_max*rel_prev_18_29 # prevalence, 18-29
+
+# University
+imports_min <- N_stud*prev_18_29_min # imported cases, min
+imports_max <- N_stud*prev_18_29_max  # imported cases, max
+imports <- round(mean(c(imports_min,imports_max))) # midpoint of range of imported cases
+initial_reported <- 450 # individuals having survived infection prior to start of simulation
+initial_removed <- initial_reported * (1/mean(c(reporting_min,reporting_max)))  # correction for under-reporting
+S0 <- Ntot-imports-initial_removed
+```
+
+```{r xi_crit}
+xi_c <- function(beta, S0, a, bL, bA, sigma, gammaI, gammaA){
+  RL <- beta*S0*(1-a)*bL*(1/sigma)
+  RI <- beta*S0*(1-a)*(1/gammaI)
+  RA <- beta*S0*a*bA*(1/gammaA)
+  R0 <- RL + RI + RA
+  term1 <- -(1/2)*(sigma*(1-R0+RA)+gammaA*(1-RA))
+  term2 <- (1/2)*sqrt((sigma*(1-R0+RA)+gammaA*(1-RA))^2+4*sigma*gammaA*(R0-1))
+  return(term1+term2)
+}
+
+
+# critical level of xi, with and without generalized interventions
+critical <- xi_c(beta, S0=S0, a=a, bL=bL, bA=bA, sigma=sigma, gammaI=gammaI, gammaA=gammaA)
+critical.generalized <- xi_c(beta*generalized, S0=S0, a=a, bL=bL, bA=bA, sigma=sigma, gammaI=gammaI, gammaA=gammaA)
+
+```
+
+```{r LHS_and_PRCC}
+num_samples <- 200
+params <- c(a, bL, bA, gammaI, gammaA, sigma, S0, R0)
+num_params <- length(params)
+lhs <- maximinLHS(num_samples,num_params)
+
+# Parameter ranges
+variation <- 0.15
+variation_vector <- c(1-variation,1+variation)
+parameter_ranges <- params%*%t(variation_vector)
+parameter_ranges[1,1:2] <- c(a_min,a_max)
+parameter_ranges[6,1:2] <- c(sigma_min,sigma_max) 
+parameter_ranges[7,1:2] <- Ntot-c(imports_max,imports_min)-initial_removed
+parameter_ranges[8,1:2] <- c(1.5,3)
+
+# Build LHS parameter set
+parameters.set <- matrix(0,num_samples,num_params)
+for (i in 1:num_params) {
+  parameters.set[,i] = lhs[,i]*(parameter_ranges[i,2]-parameter_ranges[i,1])+parameter_ranges[i,1]
+}
+
+# Initialize output vectors
+xi_c_samples <- matrix(0,1,num_samples)
+xi_c_generalized_samples <- xi_c_samples
+Reff_samples <- xi_c_samples
+Reff_generalized_samples <- xi_c_samples
+
+# Evaluate output
+for (i in 1:num_samples) {
+  a.LHS = parameters.set[i,1]
+  bL.LHS = parameters.set[i,2]
+  bA.LHS = parameters.set[i,3]
+  gammaI.LHS = parameters.set[i,4]
+  gammaA.LHS = parameters.set[i,5]
+  sigma.LHS = parameters.set[i,6]
+  S0.LHS = parameters.set[i,7]
+  R0.LHS = parameters.set[i,8]
+  beta.LHS = findBeta(R0=R0.LHS, Ntot=Ntot, a=a.LHS, bL=bL.LHS, sigma=sigma.LHS, gammaI=gammaI.LHS, bA=bA.LHS, gammaA=gammaA.LHS)
+  xi_c_samples[i] <- xi_c(beta.LHS, S0.LHS, a.LHS, bL.LHS, bA.LHS, sigma.LHS, gammaI.LHS, gammaA.LHS)
+  xi_c_generalized_samples[i] <- xi_c(beta.LHS*generalized, S0.LHS, a.LHS, bL.LHS, bA.LHS, sigma.LHS, gammaI.LHS, gammaA.LHS)
+  Reff_samples[i] <- estimateR0(beta.LHS, S0.LHS, a.LHS, bL.LHS, sigma.LHS, gammaI.LHS, bA.LHS, gammaA.LHS, xi)
+  Reff_generalized_samples[i] <- estimateR0(beta.LHS*generalized, S0.LHS, a.LHS, bL.LHS, sigma.LHS, gammaI.LHS, bA.LHS, gammaA.LHS, xi)
+}
+
+# # PRCC analysis
+# bonferroni.alpha <- 0.05/num_params
+# parameter.data <- as.data.frame(parameters.set)
+# xi_c_prcc <- pcc(parameter.data,t(xi_c_samples),nboot=1000,rank=TRUE,conf=1-bonferroni.alpha)
+# xi_c_generalized_prcc <- pcc(parameter.data,t(xi_c_generalized_samples),nboot=1000,rank=TRUE,conf=1-bonferroni.alpha)
+# Reff_prcc <- pcc(parameter.data,t(Reff_samples),nboot=1000,rank=TRUE,conf=1-bonferroni.alpha)
+# Reff_generalized_prcc <- pcc(parameter.data,t(Reff_generalized_samples),nboot=1000,rank=TRUE,conf=1-bonferroni.alpha)
+# # Save PRCC data
+# save(xi_c_prcc,file='code/xi_c_prcc.Rdata')
+# save(xi_c_generalized_prcc,file='code/xi_c_generalized_prcc.Rdata')
+# save(Reff_prcc,file='code/Reff_prcc.Rdata')
+# save(Reff_generalized_prcc,file='code/Reff_generalized_prcc.Rdata')
+load('code/xi_c_prcc.Rdata')
+load('code/xi_c_generalized_prcc.Rdata')
+load('code/Reff_prcc.Rdata')
+load('code/Reff_generalized_prcc.Rdata')
+
+# The following are referenced later in the document. References use '$' and I'm not sure how that interacts with the LaTeX in the code. Can be fixed later
+R0_xi_c_prcc <- xi_c_prcc$PRCC[8,1]
+S0_xi_c_prcc <- xi_c_prcc$PRCC[7,1]
+S0_xi_c_generalized_prcc <- xi_c_generalized_prcc$PRCC[7,1]
+S0_Reff_prcc <- Reff_prcc$PRCC[7,1]
+S0_Reff_generalized_prcc <- Reff_generalized_prcc$PRCC[7,1]
+
+```
+# Executive Summary
+
+Numerous American colleges and universities are planning to reopen for fall instruction.
+It is widely anticipated that the congregation of students will lead to new outbreaks of COVID-19.
+Institutions have accordingly adopted policies and procedures designed to limit the spread of SARS-CoV-2, but the effectiveness of these procedures is currently unknown.
+Models are a useful tool for planning and scenario analysis in the absence of empirical information.
+However, there are several information gaps that make modeling of transmission within a university community particularly difficult, including how population segmentation (i.e. faculty, students, and staff) affects transmission; mixing rates among these segments; efficacy of generalized interventions such as wearing face masks, reducing student density, and installing infection barriers; and the extent of airborne, droplet, and surface contact transmission.
+
+As with all current models, the following analysis is subject to these limitations.
+We are not, however, completely ignorant about the qualitative and quantitative properties of transmission by symptomatic and asymptomatic persons, the effectiveness of interventions, and usefulness of testing to identify asymptomatic carriers.
+In particular, compartmental models have been shown to be robust to a wide range of structural uncertainties and effectively represent the sometimes counter-intuitive properties of epidemics.
+Using the State of Georgia as an example, we modeled an outbreak of COVID-19 for a typical large state university with a population of `r scales::comma(Ntot)`. Key findings of our analysis include:
+
+* **Campus-based interventions are unlikely to prevent an epidemic of COVID-19 within the campus community.**
+* **From `r round(imports_min)` to `r round(imports_max)` imported infections may be expected with the arrival of students for Fall 2020.**
+* **To reduce the basic reproduction number ($\mathcal{R}_{0}$) to less than one, a testing program would need to administer approximately `r scales::comma(round(critical.generalized*Ntot,0))` tests per day at typical levels of protection (face masks, social distancing, etc.)**
+* **Effective containment of COVID-19 at large institutions of higher education will require the widespread adoption of behavioral practices among students that reduce transmission of SARS-CoV-2 off-campus.**
+
+#  Models
+
+We developed a compartmental model of COVID-19 transmission on a university campus that includes asymptomatic transmission and accounts for surveillance testing and case isolation as well as generalized interventions.
+Individual persons are classified as Susceptible ($S$), Latent or presymptomatic ($L$), Asymptomatic ($A$), symptomatic and Infectious ($I$), or Removed through recovery or isolation ($R$) (Fig. \ref{fig:university_model}). 
+
+```{r, out.width='70%', fig.align='center', fig.cap='\\label{fig:university_model}Compartmental model for SARS-CoV-2 on a university campus.'}
+include_graphics('university_SLAIR.png')
+```
+
+The system of ordinary differential equations for this model is
+\begin{align*}
+\dot{S} & =-\beta\left(I+b_{L}L+b_{A}A\right)S,\\
+\dot{L} & =\left(1-a\right)\beta\left(I+b_{L}L+b_{A}A\right)S-\left(\sigma+\xi\right)L,\\
+\dot{A} & =a\beta\left(I+b_{L}L+b_{A}A\right)S-\left(\gamma_{A}+\xi\right)A,\\
+\dot{I} & =\sigma L-\gamma_{I}I,\\
+\dot{R} & =\gamma_{I}I+\gamma_{A}A+\xi L+\xi A.
+\end{align*}
+We simplify the notation by defining
+\begin{align*}
+f & =\left(1-a\right)\beta\left(I+b_{L}L+b_{A}A\right), \text{and}\\
+g & =a\beta\left(I+b_{L}L+b_{A}A\right).
+\end{align*}
+Let $N=S+L+A+I+R$ represent the total population. Then $\dot{N}=0$.
+Thus the disease-free equilibrium is given by $S_{0}=N_{0}=N\left(0\right)$,
+with all other state variables equal to zero.
+
+The infectious compartments are represented by $L$, $A$, and $I$.
+The basic reproduction number is:
+\[
+\mathcal{R}_{0}=\beta N_{0}\left(1-a\right)\left[b_{L}\frac{1}{\left(\sigma+\xi\right)}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right]+\beta N_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right)
+\]
+
+### Implementation
+
+Here we parameterize our model for a large state university, using the demographics and health statistics of the State of Georgia as an example. We assume the university will use testing and case isolation in combination with generalized interventions to reduce transmission. We use our model to examine scenarios for the possibility of outbreak within the university community.
+
+The essential disease parameters apply to any population. We assume an incubation period of `r 1/sigma` days, giving $\sigma=$ `r sigma` (@Zhang2020-ih, @Li2020-hc, @Lauer2020-mr).
+We assume that incubating infections are `r scales::percent(bL)` as contagious as symptomatic infections so $b_{L}=$ `r bL`.
+Asymptomatic infections are assumed to be `r scales::percent(bA)` as contagious as symptomatic infections, so $b_{A} =$ `r bA` @Li2020-hc.
+
+The contagious period of asymptomatic individuals is assumed to be `r 1/gammaA` days, giving $\gamma_A=$ `r gammaA` (@Long2020-ny, @Oran2020-aq).
+We set recovery rate for symptomatic cases to $\gamma_I=$ `r gammaI`, indicating that symptomatic infectious individuals are assumed removed from the population within one day because of testing or self-reporting and subsequent isolation.
+
+University population, $N_0$, and testing rate, $\xi$, are specific to the university.
+We use a total university population of `r scales::comma(Ntot)`, `r scales::comma(N_stud)` of which are students (`r scales::percent(N_stud/Ntot)`), and `r scales::comma(N_staff)` or which are staff (`r scales::percent(N_staff/Ntot)`).
+
+We assume a program of randomized surveillance (`r dailytests` tests per day) with isolation of symptomatic cases (cases detected as a result of testing or reporting). Thus, `r scales::comma(dailytests)` $\div$ `r scales::comma(Ntot)` $\approx$ `r scales::percent(xi, .1)` of the population will be tested daily, represented in the model by $\xi=$ `r xi`.
+
+The transmission rate $\beta$ within the university population is estimated from the expression for $\mathcal{R}_{0}$, by setting $\xi$ to 0 and solving for $\beta$, assuming the basic reproduction number in the absence of a testing program is $\mathcal{R}_{0}= 3.0$ @Park2020-vl.
+
+\[
+\beta= \frac{\mathcal{R}_{0}}{N_{0}\left(1-a\right)\left[\frac{b_{L}}{\sigma}+\frac{1}{\gamma_{I}}\right]+\left(\frac{N_{0}ab_{A}}{\gamma_{A}}\right)}
+\]
+
+For the modeled university, the estimated transmission rate is $\beta =$ `r beta`.
+
+### Interventions & Compliance
+
+The most challenging problem (and most speculative part of this analysis) is anticipating the effectiveness of a university's generalized interventions like reducing student and staff density, requiring students and staff to wear masks, and improving workplace hygiene through cleaning and disinfection, provision of hand sanitizer, and minimizing the use of shared resources like office supplies, refrigerators, and photocopiers.
+We do not currently have a reliable method to estimate the effectiveness of these interventions empirically, and instead estimate the effectiveness using a conceptual model that considers transmission across three basic interaction types by three primary transmission routes.
+How the three transmission routes contribute to overall transmission is not precisely known.
+We assume: (1) Aerosolized "airborne" transmission = `r scales::percent(trans_airborne)`, (2) Droplet transmission = `r scales::percent(trans_droplets)`, and (3) Contact surfaces = `r scales::percent(trans_contact)`.
+Masks reduce (1) and (2) by about `r scales::percent(reduction_masks)` and "healthy workplace" practices reduce (3) by about `r scales::percent(reduction_cleaning)` (@Offeddu2017-ae, @Bowen2010-ht, @Reynolds2016-oy).
+Thus, with full compliance, interventions might reduce transmission by `r trans_airborne` $\times$ `r reduction_masks` + `r trans_droplets` $\times$ `r reduction_masks` + `r trans_contact` $\times$ `r reduction_cleaning` $=$ `r reduction_tot`.
+
+We suppose compliance is based on transmission type.
+The three transmission types are: (1) student-student, (2) student-staff, and (3) staff-staff.
+For $m=$ `r scales::comma(N_stud)`  students and $n=$ `r scales::comma(N_staff)` staff, there are $m^2-m \approx 1.5 \text{ billion}$ possible student-student interactions, $m \times n \approx 422 \text{ million}$ student-staff interactions, and $n^2-n \approx 117 \text{ million}$ staff-staff interactions for a total of `r scales::comma(inter_tot)` possible interactions.
+Translated into percentages, student-student interactions are `r scales::percent(inter_stud_stud/inter_tot, .1)` of the total, student-staff interactions are `r scales::percent(inter_stud_staff/inter_tot, .1)` of the total, and staff-staff interactions are `r scales::percent(inter_staff_staff/inter_tot, .1)` of the total.
+We assume that mask and healthy workplace interventions have their estimated effectiveness at all times at which people are engaged in on-campus activities and that all student-staff and staff-staff interactions are on-campus activities, but that off-campus student-student interactions are non-compliant.
+We further assume that students spend `r hours_oncampus` hours per week engaged in on campus activities, $7 \times 8 =$ `r hours_sleep` hours per week sleeping, and the remaining $168~-$ `r hours_oncampus` $-$ `r hours_sleep` $=$ `r hours_offcampus` hours per week engaged in off campus activities.
+Thus, we estimate that `r hours_oncampus` $/($ `r hours_oncampus` $+$ `r hours_offcampus` $)=$
+`r scales::percent(compliance_stud, .1)` of student-student interactions are compliant.
+Turning all of this into a weighted average, we assume that the total reduction in transmission due to generalized interventions will be
+`r round(inter_stud_stud/inter_tot,3)` $\times$
+`r round(compliance_stud,3)` $\times$
+`r round(reduction_tot,3)` $+$
+`r round(inter_stud_staff/inter_tot,3)` $\times$ 
+`r round(compliance_staff,3)` $\times$ 
+`r round(reduction_tot,3)` $+$
+`r round(inter_staff_staff/inter_tot,3)` $\times$ 
+`r round(compliance_staff,3)` $\times$ 
+`r round(reduction_tot,3)` $=$
+`r scales::percent(reduction_allinteractions, .1)`. 
+We do not attempt to separately account for reduction in transmission due to some staff or students performing work or attending class exclusively on-line.
+
+With these parameters, we obtain $\mathcal{R}_{0}=$ `r round(R0,2)` for the model with testing but no interventions and $\mathcal{R}_{0}=$ `r round(R0interventions,2)` for the model with testing and interventions. **We therefore conclude that campus-based interventions are unlikely to prevent an epidemic of COVID-19 within a large state university community without additional measures.**
+
+### Initial condition
+
+Solutions to the equations were obtained using the R package `pomp` @King2016-ra.
+Simulating the model forward in time requires initializing with an assumed number of students incubating an active infection upon arrival to campus.
+We assume that these are drawn randomly from within the state.
+For Georgia, we observe that the 7-day moving average number of reported cases has fluctuated around `r cases_7_day_average` since mid-July.
+To infer the number of active infections in the state requires that we correct this number for under-reporting of symptomatic cases, correct for the incubation period, and correct for the fraction of cases that never become symptomatic.
+
+Our first correction is made by assuming that at least `r scales::percent(reporting_min)` of symptomatic cases are reported and at most `r scales::percent(reporting_max)` are reported.
+This yields `r scales::comma(dailyreportable_min)` to `r scales::comma(dailyreportable_max)` symptomatic, reportable cases per day.
+On average, it takes `r 1/sigma_max`-`r 1/sigma_min` days for an infection to become symptomatic.
+In addition, there is an approximately 4-day post-symptomatic infectious period @He2020-pq.
+Thus, there are between
+`r scales::comma(dailyreportable_min)` $\times~($ `r 1/sigma_max` $+$ `r gammaSymp` $) =$
+`r scales::comma(active_min)` and 
+`r scales::comma(dailyreportable_max)` $\times~($ `r 1/sigma_min` $+$ `r gammaSymp` $) =$
+`r scales::comma(active_max)` active COVID cases in Georgia.
+The symptomatic rate is believed to be between `r scales::percent(1-a_max)` and 
+`r scales::percent(1-a_min)` (@Pollan2020-xb, @Oran2020-aq, @Mizumoto2020-qc) yielding a minimum current number of infections in Georgia of 
+`r scales::comma(active_min)` $\div$ `r 1-a_min` $=$ `r scales::comma(infected_min)` 
+and a maximum current number of infections of 
+`r scales::comma(active_max)` $\div$ `r 1-a_max` $=$ `r scales::comma(infected_max)`.
+Georgia has an approximate population of `r scales::comma(pop_GA)` persons yielding a current prevalence of `r scales::percent(prev_min, .01)` to `r scales::percent(prev_max, .01)`.
+It is well known that young adults are disproportionately likely to be infected.
+The Georgia Department of Public Health has reported that between July 16 and August 11 approximately `r scales::percent(cases_GA_percent_18_29,.1)` of total cases in the state were persons aged 18 to 29.
+The US Census data table SC-EST2018-AGESEX-CIV "Annual Estimates of the Civilian Population by Single Year of Age and Sex for the United States and States: April 1, 2010 to July 1, 2018" reports that 
+`r scales::comma(pop_GA_18_29)` out of `r scales::comma(pop_GA)` 
+(`r scales::percent(pop_GA_percent_18_29,.1)`) Georgia residents are in this age band suggesting that college-aged residents in that state are 
+`r cases_GA_percent_18_29` $/$ `r pop_GA_percent_18_29` $-1=$ `r scales::percent(rel_prev_18_29-1, .1)` more likely to be infected than average, leading to a statewide age-specific range for the estimated prevalence of `r scales::percent(prev_18_29_min, .01)` to `r scales::percent(prev_18_29_max, .01)`.
+Multiplying these prevalence estimates by the `r scales::comma(N_stud)` student population of the university suggests that **`r round(imports_min)` to `r round(imports_max)` imported infections may be expected with the arrival of students for Fall 2020.**
+
+We assume a certain number of individuals in the university population will have already recovered from infection prior to the start of the Fall semester. Asuming the number of reported cases in the university prior to the Fall semester is `r initial_reported`, and correcting for under-reporting, we estimate that between `r initial_reported` $\div$ `r reporting_max` and `r initial_reported` $\div$ `r reporting_min` individuals have survived an infection and/or been isolated and have moved into the $R$ class.
+
+### What is the probability that a person in a given class is infected?
+
+The preceding calculations suggest that the initial prevalence is probably between `r scales::percent(prev_18_29_min, .01)` and `r scales::percent(prev_18_29_max, .01)`.
+We represent these quantities by the letter $p$, i.e. $p_{\text{low}} =$ `r round(prev_18_29_min, 4)` and $p_{\text{high}} =$ `r round(prev_18_29_max, 4)`.
+If these cases are randomly distributed among the student population, the probability that any given person is *not* infected is $(1-p)$.
+Thus, the probability that *one or more* students in a class of size $n$ are infected is $1-(1-p)^n$.
+This formula is plotted below for $p_{\text{low}}$ and $p_{\text{high}}$.
+Of course, $p$ will change over the course of the semester depending on how much transmission occurs.
+Further insight is obtained by solving $1-(1-p)^n=0.5$ to obtain $n=\frac{\log 0.5}{\log (1-p)}$.
+This is the class size at which the class is more likely than not to include an infected person. 
+Using the upper bound, $p_{\text{high}} =$ `r round(prev_18_29_max, 4)`, we find that classes of `r round(log(0.5)/log(1-prev_18_29_max),0)` or more persons are more likely than not to include an infected person. Using the lower bound, $p_{\text{low}} =$ `r round(prev_18_29_min, 4)`, we find that classes of `r round(log(0.5)/log(1-prev_18_29_min),0)` or more persons are more likely than not to include an infected person.
+
+```{r class-prob,  out.width='70%', fig.align='center', fig.cap='\\label{fig:class-size}Probability that a class contains an infected person as a function of class size. The size of the class is shown on the x-axis with lower bound (blue) and upper bound (red).'}
+
+f <- function(p, n) 1-(1-p)^n
+n <- seq(1,150)
+p.lo <- prev_18_29_min
+p.high <- prev_18_29_max
+x1 <- f(p.lo, n)
+x2 <- f(p.high, n)
+
+polygon <- data.frame(x=c(n, rev(n)), y=c(x1,rev(x2)))
+
+
+p <- ggplot() +
+  geom_polygon(data=polygon, aes(x, y), fill="grey") +
+  geom_line(data=data.frame(n,x1), aes(x = n, y = x1, color="Low"), size=1.2) +
+  geom_line(data=data.frame(n,x2), aes(x = n, y = x2, color="High"), size=1.2) +
+  xlab("Number of students in a class") +
+  ylab("Probability") +
+  ggtitle("Probability that one or more students in a class is infected") +
+  labs(color = "Estimate")
+
+plot(p)
+```
+
+### Simulated outbreak
+
+For illustration, we simulated outbreaks with and without generalized interventions.
+In both cases, we assume testing of `r dailytests` asymptomatic persons per day.
+Fig. \ref{fig:scenario-university} shows the epidemic curve, i.e. daily cases over time.
+Fig. \ref{fig:scenario-university-2} shows the total outbreak size, i.e. cumulative cases over time.
+These results show that a major outbreak affecting >30,000 persons is the most likely outcome of reopening campus under the assumed conditions.
+
+```{r stochastic-university, out.width='70%', fig.align='center',fig.cap='\\label{fig:scenario-university}Scenario analysis for an outbreak of COVID-19 on a university campus: Cases per day.'}
+theme_set(theme_minimal())
+
+# Initial conditions
+inivals <- c(S_0 = Ntot-imports-initial_removed, 
+             L_0 = imports*(1-a), 
+             A_0 = imports*(a), 
+             I_0 = 0, 
+             R_0 = initial_removed)
+
+parvals_university <- c(log_beta = log(beta),
+                        a = a,
+                        log_bL = log(bL),
+                        log_bA = log(bA),
+                        log_xi = log(xi),
+                        log_gammaI = log(gammaI),
+                        log_gammaA = log(gammaA),
+                        log_sigma = log(sigma),
+                        log_theta_cases_reported = log(theta),
+                        log_theta_cases_surveilled = log(theta)
+                        )
+
+parvals_university_diffuse <- c(log_beta = log(generalized*beta),
+                                a = a,
+                                log_bL = log(bL),
+                                log_bA = log(bA),
+                                log_xi = log(xi),
+                                log_gammaI = log(gammaI),
+                                log_gammaA = log(gammaA),
+                                log_sigma = log(sigma),
+                                log_theta_cases_reported = log(theta),
+                                log_theta_cases_surveilled = log(theta)
+                                )
+
+sims <- simulate_covid(c(parvals_university,inivals), model=university_model, nsim=50)
+sims2 <- simulate_covid(c(parvals_university_diffuse,inivals), model=university_model, nsim=50)
+
+d1 <- sims %>%
+  dplyr::select(time, .id, R) %>%
+  dplyr::filter(.id==2) %>%
+  dplyr::mutate(diff = R-lag(R)) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id, -R)
+
+d1.C_report <- sims %>%
+  dplyr::select(time, .id, C_report) %>%
+  dplyr::filter(.id==2) %>%
+  dplyr::mutate(diff = C_report) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id, -C_report)
+
+d1.C_surveil <- sims %>%
+  dplyr::select(time, .id, C_surveil) %>%
+  dplyr::filter(.id==2) %>%
+  dplyr::mutate(diff = C_surveil) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id, -C_surveil)
+
+d2 <- sims2 %>%
+  dplyr::select(time, .id, R) %>%
+  dplyr::filter(.id==2) %>%
+  dplyr::mutate(diff = R-lag(R)) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id ,-R)
+
+d2.C_report <- sims2 %>%
+  dplyr::select(time, .id, C_report) %>%
+  dplyr::filter(.id==2) %>%
+  dplyr::mutate(diff = C_report) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id, -C_report)
+
+d2.C_surveil <- sims2 %>%
+  dplyr::select(time, .id, C_surveil) %>%
+  dplyr::filter(.id==2) %>%
+  dplyr::mutate(diff = C_surveil) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id, -C_surveil)
+
+pl <- ggplot() +
+  geom_line(data=d1, aes(x = time, y = value, group = .id, color="No")) +
+  geom_line(data=d1.C_report, linetype = "dashed", aes(x = time, y = value, group = .id, color="No")) +
+  geom_line(data=d1.C_surveil, linetype = "dotted", aes(x = time, y = value, group = .id, color="No")) +
+  geom_line(data=d2, aes(x = time, y = value, group = .id, color="Yes")) +
+  geom_line(data=d2.C_report, linetype = "dashed", aes(x = time, y = value, group = .id, color="Yes")) +
+  geom_line(data=d2.C_surveil, linetype = "dotted", aes(x = time, y = value, group = .id, color="Yes")) +
+  xlab("Time (days)") +
+  ylab("New cases (daily)") +
+  ggtitle("Scenario analysis for an outbreak of COVID-19 on a university campus") +
+  labs(color = "Interventions") +
+  annotate("text", x = 90, y = 1250, label = "Solid lines: all cases\nDashed lines: cases identified from reporting\nDotted lines: cases identified from testing")
+
+plot(pl)
+```
+
+```{r stochastic-university-2, out.width='70%', fig.align='center',fig.cap='\\label{fig:scenario-university-2}Scenario analysis for an outbreak of COVID-19 on a university campus: Cumulative cases over time.'}
+d1 <- sims %>%
+  dplyr::select(time, .id, R) %>%
+  dplyr::filter(.id==2) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id)
+
+d2 <- sims2 %>%
+  dplyr::select(time, .id, R) %>%
+  dplyr::filter(.id==2) %>%
+  tidyr::gather(key = "variable", value = "value", -time, -.id)
+
+pl2 <- ggplot() +
+  geom_line(data=d1, aes(x = time, y = (value), group = .id, color="No")) +
+  geom_line(data=d2, aes(x = time, y = (value), group = .id, color="Yes")) +
+  xlab("Time (days)") +
+  ylab("Cumulative cases") +
+  ggtitle("Scenario analysis for an outbreak of COVID-19 on a university campus") +
+  labs(color = "Interventions") +
+  scale_y_log10()
+
+plot(pl2)
+```
+
+### What test frequency is required to bring $R_0$ to less than one?
+
+The testing rate, $\xi$, is an important parameter which can be modified by policy. The probability of an outbreak, represented by the basic reproduction number, can be reduced by increasing the testing rate above a certain critical threshold, which we call the critical testing rate, $\xi_c$. To derive this value, where $\mathcal{R}_{0}=1$, we first define the following partial reproduction numbers without control:
+\begin{align*}
+\mathcal{R}_{L0} & =\beta S_{0}\left(1-a\right)b_{L}\frac{1}{\sigma},\\
+\mathcal{R}_{I0} & =\beta S_{0}\left(1-a\right)\frac{1}{\gamma_{I}},\\
+\mathcal{R}_{A0} & =\beta S_{0}ab_{A}\frac{1}{\gamma_{A}},\\
+\mathcal{R}_{0} & =\mathcal{R}_{L0}+\mathcal{R}_{I0}+\mathcal{R}_{A0}.
+\end{align*}
+
+Then, the critical testing rate, is found to be
+\[
+\xi_{c}=-\frac{1}{2}\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]+\frac{1}{2}\sqrt{\left[\sigma\left(1-\mathcal{R}_{0}+\mathcal{R}_{A0}\right)+\gamma_{A}\left(1-\mathcal{R}_{A0}\right)\right]^{2}+4\sigma\gamma_{A}\left(\mathcal{R}_{0}-1\right)}.
+\]
+
+We use this formula to find the level of testing that would be required to reduce the effective reproduction number to less than one as a function of the effectiveness of generalized interventions (Fig. \ref{fig:critical-xi}).
+
+```{r critical-xi, out.width='70%', fig.align='center', fig.cap='\\label{fig:critical-xi}Daily number of tests required to reduce $R_0$ to less than one as a function of the effectiveness of interventions (black line). Achieving containment requires a combination of testing and intervention effectiveness above this line. Horizontal dashed line shows the size of the modeled testing program (300 tests per day). Vertical dashed line shows estimated effectiveness of on-campus transmission interventions.'}
+
+interventions <- data.frame(effectiveness=seq(0,1, by=0.01), xi_c=NA)
+
+for(i in 1:dim(interventions)[1]) {
+  interventions[i,2] <- xi_c(interventions[i,1]*beta, S0=Ntot, a, bL, bA, sigma, gammaI, gammaA)*Ntot
+}
+plot(0,0, type='l', bty='n', axes=FALSE,
+     xlab="Intervention effectiveness (% reduction in transmission)",
+     ylab="Critical number of tests per day",
+     xlim = c(0,1), ylim=c(0,12000))
+axis(1, at = seq(0,1,.2), lwd = 0, cex.axis=.8, col.axis='#666666')
+axis(2, at = seq(0,12000,2000), lwd = 0, cex.axis=.8, col.axis='#666666', las = 1)
+grid(lty = "solid")
+abline(v=0.245, col='#19bdc2', lty=2, lwd=2)
+abline(h=300,   col='#f37770', lty=2, lwd=2)
+lines(1-interventions$effectiveness, interventions$xi_c, type='l', lwd = 2)
+
+text(x=0.25, y=8900, 'Estimated current\nintervention effectiveness', col='#19bdc2', pos=4)
+text(x=0.7, y=700, 'Modeled testing level', col='#f37770', pos=4)
+
+```
+
+**With no generalized interventions, the critical testing rate is $\xi_c =$ `r round(critical,3)` (equivalent to `r scales::comma(round(critical*Ntot,0))` tests per day) and with generalized interventions it is $\xi_c^\prime =$ `r round(critical.generalized, 3)` (equivalent to `r scales::comma(round(critical.generalized*Ntot,0))` tests per day).**
+
+Uncertainty in the model parameters affects our confidence in these estimates.
+To understand the effects of such variation, we performed a sensitivity analysis of the critical testing rate.
+We measure sensitivity with partial rank correlation coefficients (PRCC) because these indices are independent of the relative magnitudes of the parameter values.
+
+To isolate the effect of uncertainty in epidemiological parameters on the critical testing rate, we fixed the transmission parameter $\beta$ so that $\mathcal{R}_0=3$ and incorporated uncertainty into the remaining epidemiological parameters.
+To represent this uncertainty, we sample from assumed uniform distributions representing the range of their possible values as follows: 
+
+$a\sim \operatorname{Uniform}($ `r a_min` $,$ `r a_max` $)$,  
+$b_L\sim \operatorname{Uniform}($ `r (1-variation)*bL` $,$ `r (1+variation)*bL` $)$,  
+$b_A\sim \operatorname{Uniform}($ `r (1-variation)*bA` $,$ `r (1+variation)*bA` $)$,  
+$\gamma_I\sim \operatorname{Uniform}($ `r (1-variation)*gammaI` $,$ `r (1+variation)*gammaI` $)$,  
+$\gamma_A\sim \operatorname{Uniform}(~\frac{17}{280},\frac{23}{280}~)$,  
+$\sigma\sim \operatorname{Uniform}($ `r sigma_min` $,$ `r round(sigma_max,2)` $)$, and  
+$S_0\sim \operatorname{Uniform}($ `r scales::comma(Ntot-imports_max-initial_removed)` $,$ `r scales::comma(Ntot-imports_min-initial_removed)` $)$.  
+
+Absent strong empirical evidence for the range of these values, the parameters 
+$b_L$, $b_A$, $\gamma_I$, and $\gamma_A$ are assumed to vary by `r scales::percent(variation)` from their baseline values.
+
+We performed Latin Hypercube Sampling with 200 samples to efficiently explore the effects of varying the parameter values on the critical testing rate (Fig. \ref{fig:xi-sensitivity}).
+In the absence of generalized interventions, the critical testing rate always exceeded $`r scales::comma(min(xi_c_samples),accuracy=.001)`$ per person per day, providing a lower bound of roughly $`r scales::comma(min(xi_c_samples),accuracy=.001)`\times$ `r scales::comma(Ntot)` $\approx$ `r scales::comma(round(min(xi_c_samples)*Ntot,-2))` individuals tested daily. When generalized interventions are incorporated, the lower bound is then roughly $`r scales::comma(min(xi_c_generalized_samples),accuracy=.001)`\times$ `r scales::comma(Ntot)` $\approx$ `r scales::comma(round(min(xi_c_generalized_samples)*Ntot,-2))` individuals tested daily.
+
+```{r xi-sensitivity,  out.width='70%', fig.align='center', fig.cap='\\label{fig:xi-sensitivity}Uncertainty in the critical testing rate from a Latin Hypercube Sample of the model parameters. Blue bars show critical testing rates when generalized interventions are used. Red bars show critical testing rates without generalized interventions.'}
+
+xi_c_breaks_max <- max(xi_c_samples,xi_c_generalized_samples)*Ntot
+xi_c_breaks <- pretty(0:xi_c_breaks_max,n=ceiling(xi_c_breaks_max/500))
+
+hist_xi_c <- (xi_c_samples*Ntot) %>% hist(breaks = xi_c_breaks, plot = FALSE)
+hist_xi_c_generalized <- (xi_c_generalized_samples*Ntot) %>% hist(breaks = xi_c_breaks, plot = FALSE)
+
+our.blue <- alpha('#19bdc2',alpha=.5)
+our.red <- alpha('#f37770',alpha=.5)
+x.ax <- seq(0,20000,5000)
+y.ax <- c(0,max(hist_xi_c$counts,hist_xi_c_generalized$counts))
+
+plot(-1,-1,xlim=range(x.ax),ylim=range(y.ax), type='n',
+     bty='n', axes=FALSE,
+     xlab="Critical number of tests per day",
+     ylab="",
+     col=our.blue)
+axis(1, at = x.ax, lwd = 0, cex.axis=.8, col.axis='#666666')
+# axis(2, at = y.ax, lwd = 0, cex.axis=.8, col.axis='#666666', las = 1)
+grid(lty = "solid")
+plot(hist_xi_c_generalized,col=our.blue, add = TRUE)
+plot(hist_xi_c,col=our.red, add = TRUE)
+
+legend("topright", 
+  legend = c("With generalized interventions", "Without generalized interventions"), 
+  col = c(our.blue,our.red), 
+  pch = c(15), 
+  bty = "n", 
+  pt.cex = 2, 
+  cex = .8, 
+  text.col = c(alpha(our.blue,1),alpha(our.red,1)), 
+  horiz = F , 
+  inset = c(.05, 0.175))
+
+
+# text(x=0.05*Ntot, y=35, 'With\ngeneralized\ninterventions', col=alpha(our.blue,1.0))
+# text(x=0.3*Ntot, y=25, 'Without\ninterventions', col=alpha(our.red,1.0))
+#abline(v=mean(xi_c_samples),col=alpha(our.red,1.0),lty="dashed",lwd=2)
+#abline(v=mean(xi_c_generalized_samples),col=alpha(our.blue,1.0),lty="dashed",lwd=2)
+#abline(v=min(xi_c_samples),col=alpha(our.red,1.0),lty="dotted",lwd=1.5)
+#abline(v=min(xi_c_generalized_samples),col=alpha(our.blue,1.0),lty="dotted",lwd=1.5)
+#abline(v=max(xi_c_samples),col=alpha(our.red,1.0),lty="dotted",lwd=1.5)
+#abline(v=max(xi_c_generalized_samples),col=alpha(our.blue,1.0),lty="dotted",lwd=1.5)
+
+```
+
+All parameters considered were significantly correlated to the critical testing rate. The basic reproduction number ($\mathcal{R}_0$) was most strongly correlated to the critical testing rate (PRCC value of $`r scales::comma(R0_xi_c_prcc,accuracy =.01)`$, with or without generalized interventions) while the initial number of susceptible individuals was among the two least correlated (PRCC value of $`r scales::comma(S0_xi_c_prcc,accuracy =.01)`$, $`r scales::comma(S0_xi_c_generalized_prcc,accuracy =.01)`$ with generalized interventions).
+
+We infer that reducing the initial number of susceptible individuals on campus would not have a significant effect on the ability for a reduced rate of testing to control an epidemic. However, reducing the susceptible population should have an impact on the cumulative number of cases and daily new cases.
+
+We also explored the effects of varying the parameter values on the effective reproduction number $\mathcal{R}_\text{eff}$, assuming that the testing rate is $\xi = `r xi`$, with and without generalized interventions (Fig.~\ref{fig:re-sensitivity}). In the absence of generalized interventions, $\mathcal{R}_\text{eff}$ always exceeded $`r scales::comma(min(Reff_samples),accuracy=.001)`$. When generalized interventions are incorporated, the lower bound is then roughly $`r scales::comma(min(Reff_generalized_samples),accuracy=.001)`$. In either case, $\mathcal{R}_\text{eff}$ exceeds the critical threshold of one.
+
+```{r re-sensitivity,  out.width='70%', fig.align='center', fig.cap='\\label{fig:re-sensitivity}Uncertainty in the effective reproduction number from a Latin Hypercube Sample of the model parameters. Blue bars show estimates of the effective reproduction number when generalized interventions are used. Red bars show estimates of the effective reproduction number without generalized interventions.'}
+
+Reff_breaks_max <- ceiling(max(Reff_samples,Reff_generalized_samples))
+Reff_breaks <- seq(0,Reff_breaks_max,.1)
+
+hist_Reff <- Reff_samples %>% hist(breaks = Reff_breaks, plot = FALSE)
+hist_Reff_generalized <- Reff_generalized_samples %>% hist(breaks = Reff_breaks, plot = FALSE)
+
+our.blue <- alpha('#19bdc2',alpha=.5)
+our.red <- alpha('#f37770',alpha=.5)
+x.ax <- seq(0,Reff_breaks_max,.5)
+y.ax <- c(0,max(hist_Reff$counts,hist_Reff_generalized$counts))
+
+plot(-1,-1,xlim=range(x.ax),ylim=range(y.ax), type='n',
+     bty='n', axes=FALSE,
+     xlab="Effective reproduction number",
+     ylab="",
+     col=our.blue)
+axis(1, at = x.ax, lwd = 0, cex.axis=.8, col.axis='#666666')
+# axis(2, at = y.ax, lwd = 0, cex.axis=.8, col.axis='#666666', las = 1)
+grid(lty = "solid")
+plot(hist_Reff_generalized,col=our.blue, add = TRUE)
+plot(hist_Reff,col=our.red, add = TRUE)
+
+legend("topleft", 
+  legend = c("With interventions", "Without interventions"), 
+  col = c(our.blue,our.red), 
+  pch = c(15), 
+  bty = "n", 
+  pt.cex = 2, 
+  cex = .8, 
+  text.col = c(alpha(our.blue,1),alpha(our.red,1)), 
+  horiz = F , 
+  inset = c(0.05, 0.05))
+
+
+# text(x=0.05*Ntot, y=35, 'With\ngeneralized\ninterventions', col=alpha(our.blue,1.0))
+# text(x=0.3*Ntot, y=25, 'Without\ninterventions', col=alpha(our.red,1.0))
+#abline(v=mean(xi_c_samples),col=alpha(our.red,1.0),lty="dashed",lwd=2)
+#abline(v=mean(xi_c_generalized_samples),col=alpha(our.blue,1.0),lty="dashed",lwd=2)
+#abline(v=min(xi_c_samples),col=alpha(our.red,1.0),lty="dotted",lwd=1.5)
+#abline(v=min(xi_c_generalized_samples),col=alpha(our.blue,1.0),lty="dotted",lwd=1.5)
+#abline(v=max(xi_c_samples),col=alpha(our.red,1.0),lty="dotted",lwd=1.5)
+#abline(v=max(xi_c_generalized_samples),col=alpha(our.blue,1.0),lty="dotted",lwd=1.5)
+
+```
+
+As might be expected, $\mathcal{R}_\text{eff}$ is most strongly correlated with the basic reproduction number with or without generalized interventions. $\mathcal{R}_\text{eff}$ is also strongly positively correlated with the initial number of susceptible individuals, $S_0$ (PRCC values of $`r scales::comma(S0_Reff_prcc,accuracy =.01)`$ with and without generalized interventions). As $\mathcal{R}_\text{eff}$ is correlated to the final epidemic size, decreasing the initial number of susceptibles on campus may be effective at reducing the number of infections throughout the semester, despite $\mathcal{R}_\text{eff}$ being above the critical threshold.
+
+## Discussion
+
+Prior studies have suggested that testing to mitigate transmission would require testing all participants every 2 days @Paltiel2020-yp to 28 days @Bradley2020-ig. Both of these prior studies were based on a student population of around 5000. Our model, for a large institution of `r scales::comma(N_stud)` students and `r scales::comma(N_staff)` staff, suggests that successfully mitigating transmission at such an institution would require testing approximately `r scales::comma(round(critical.generalized*Ntot,-2))` persons per day, equivalent to testing each person every `r round(1/critical.generalized,1)` days. The already daunting operational logistics of such a program are further exacerbated by the currently limited supply of key reagents and materials (@Wu2020-bc, @Armour2020-pr) and the larger societal need to ethically and efficiently allocate limited testing resources to those with a medically-indicated need for testing and public health surveillance @American_Medical_Association2020-mi.
+
+Fig. \ref{fig:critical-xi} shows that actions to reduce transmission are not mutually exclusive and may be used in combination. For instance, a surveillance testing program may be combined with other interventions to achieve containment. Given current circumstances, increasing the effectiveness of interventions and limiting contact among students and between students and staff (for instance through the use of remote learning) appear to be the most promising means for effective containment of COVID-19 within institutions of higher education. In particular, we identify off-campus student-student interactions to be the arena of intervention with the greatest opportunity for significant reductions in transmission. The stabilization and reduction in transmission enjoyed by numerous states and municipalities during Spring 2020 show that containment through behavior change is possible even at very large scales.
+
+# References

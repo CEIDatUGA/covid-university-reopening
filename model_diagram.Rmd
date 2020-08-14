@@ -1,0 +1,72 @@
+---
+title: "Model transmission of SARS-CoV-2 on a university campus"
+author: "John M. Drake"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: pdf_document
+header-includes:
+   - \usepackage{amsmath,epsfig}
+   - \usepackage{amssymb,amsthm}
+   - \usepackage[all]{xy}
+   - \usepackage{xcolor}
+---
+
+#  Model 
+
+$$
+\xymatrix @+1.4pc{
+    *{} &*{} 
+    &*++<1.3em>[F-,]{\ I \ } \ar[dr]^{\gamma_I I}
+    &*{}
+    \\    
+    *++<1.3em>[F-,]{\ S \ } \ar[r]^{f S} \ar[dr]^{g S}    
+    & *++<1.3em>[F-,]{\ L \ } \ar[ur]^{\sigma L} \ar[rr]^{\xi L} 
+    & *{}   
+    & *++<1.3em>[F-,]{\ R \ }
+    \\
+    *{} & *++<1.3em>[F-,]{\ A \ } \ar[urr]^{\gamma_A A + \xi A}
+    &*{} &*{}
+}
+$$
+
+\begin{equation}
+\begin{aligned}
+  f &= (1-a)\beta(I + b_L L + b_A A) \\
+  g &= a\beta(I + b_L L + b_A A) \\
+  a &= \text{proportaion asymptomatic}\\
+  \beta &= \text{natural transmission rate}\\
+  b_L &= \text{relative transmissibility of Latent individuals}\\
+  b_A &= \text{relative transmissibility of Asymptomatic individuals}\\
+  \sigma &= \text{incubation rate}\\   
+  \gamma_I &= \text{removal rate for symptomatic individuals}\\
+  \gamma_A &= \text{removal rate for asymptomatic individuals}\\
+  \xi &= \text{testing rate}\\
+  N_0 &= \text{population size}\\
+\end{aligned}
+\end{equation}
+
+The system of ordinary differential equations for this model is
+
+\begin{equation}
+\begin{aligned}
+  \dot{S} &= -\beta(I + b_L L + b_A A) S\\
+  \dot{L} &= (1-a)\beta(I + b_L L + b_A A) S - \sigma L - \xi L\\
+  \dot{A} &= a\beta(I + b_L L + b_A A) S - \gamma_A A - \xi A \\
+  \dot{I} &= \sigma L - \gamma_I I \\
+  \dot{R} &= \gamma_I I + \gamma_A A + \xi L + \xi A \\
+\end{aligned}
+\end{equation}
+
+The basic reproduction number is
+
+\[
+\mathcal{R}_{0}=\beta N_{0}\left(1-a\right)\left[b_{L}\frac{1}{\left(\sigma+\xi\right)}-\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right]+\beta N_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right)
+\]
+
+In the absence of certification ($\xi = 0$), the basic reproduction number reduces to
+
+\[
+\mathcal{R}_{0}=\beta N_{0}\left(1-a\right)\left[\frac{b_{L}}{\sigma}-\frac{\sigma}{\gamma_{I}}\right]+\left(\frac{\beta N_{0}ab_{A}}{\gamma_{A}}\right)
+\]
+
+We can rearrange this to solve for $\beta$.
+
