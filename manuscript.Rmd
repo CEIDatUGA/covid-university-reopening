@@ -10,7 +10,7 @@ output:
   html_document:
     df_print: paged
   word_document: default
-abstract: Significant uncertanties remain concerning the opening of college and university campuses in the United States due to COVID-19. We assembled quantitative empirical information about several processes likely to affect the transmission of SARS-CoV-2 within institutions of higher education. Preliminary results suggest that campuses should anticipate explosive localized outbreaks and be prepared for significant levels of transmission associated with the congregation of students.
+abstract: Significant uncertanties remain concerning the opening of college and university campuses in the United States due to COVID-19. We assembled quantitative empirical information about several processes likely to affect the transmission of SARS-CoV-2 within institutions of higher education. Preliminary results suggest that campuses should anticipate explosive localized outbreaks and be prepared for significant levels of transmission associated with the congregation of students. We identify off-campus student-student interactions to be the arena of intervention with the greatest opportunity for significant reductions in transmission.
 keywords: COVID-19, coronavirus, non-pharmaceutical interventions, SARS-CoV-2
 link-citations: yes
 csl: proceedings-of-the-royal-society-b.csl
@@ -54,7 +54,7 @@ theta <- 100
 
 # University parameters
 Ntot <- 50000
-N_stud <- Ntot*.78 # 78% of population are students
+N_stud <- Ntot*0.8 # 80% of population are students
 N_staff <- Ntot - N_stud
 dailytests <- 300
 maxTime <- 1000
@@ -158,7 +158,7 @@ critical.generalized <- xi_c(beta*generalized, S0=S0, a=a, bL=bL, bA=bA, sigma=s
 ```
 
 ```{r LHS_and_PRCC}
-num_samples <- 200
+num_samples <- 500
 params <- c(a, bL, bA, gammaI, gammaA, sigma, S0, R0)
 num_params <- length(params)
 lhs <- maximinLHS(num_samples,num_params)
@@ -170,7 +170,7 @@ parameter_ranges <- params%*%t(variation_vector)
 parameter_ranges[1,1:2] <- c(a_min,a_max)
 parameter_ranges[6,1:2] <- c(sigma_min,sigma_max) 
 parameter_ranges[7,1:2] <- Ntot-c(imports_max,imports_min)-initial_removed
-parameter_ranges[8,1:2] <- c(1.5,3)
+parameter_ranges[8,1:2] <- c(2,4)
 
 # Build LHS parameter set
 parameters.set <- matrix(0,num_samples,num_params)
@@ -244,7 +244,7 @@ Using the State of Georgia as an example, we modeled an outbreak of COVID-19 for
 * **To reduce the basic reproduction number ($\mathcal{R}_{0}$) to less than one, a testing program would need to administer approximately `r scales::comma(round(critical.generalized*Ntot,0))` tests per day at typical levels of protection (face masks, social distancing, etc.)**
 * **Effective containment of COVID-19 at large institutions of higher education will require the widespread adoption of behavioral practices among students that reduce transmission of SARS-CoV-2 off-campus.**
 
-#  Models
+#  Model
 
 We developed a compartmental model of COVID-19 transmission on a university campus that includes asymptomatic transmission and accounts for surveillance testing and case isolation as well as generalized interventions.
 Individual persons are classified as Susceptible ($S$), Latent or presymptomatic ($L$), Asymptomatic ($A$), symptomatic and Infectious ($I$), or Removed through recovery or isolation ($R$) (Fig. \ref{fig:university_model}). 
@@ -273,12 +273,12 @@ with all other state variables equal to zero.
 The infectious compartments are represented by $L$, $A$, and $I$.
 The basic reproduction number is:
 \[
-\mathcal{R}_{0}=\beta N_{0}\left(1-a\right)\left[b_{L}\frac{1}{\left(\sigma+\xi\right)}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right]+\beta N_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right)
+\mathcal{R}_{0}=\beta N_{0}\left(1-a\right)\left[b_{L}\frac{1}{\left(\sigma+\xi\right)}+\frac{1}{\gamma_{I}}\left(\frac{\sigma}{\sigma+\xi}\right)\right]+\beta N_{0}ab_{A}\left(\frac{1}{\gamma_{A}+\xi}\right).
 \]
 
 ### Implementation
 
-Here we parameterize our model for a large state university, using the demographics and health statistics of the State of Georgia as an example. We assume the university will use testing and case isolation in combination with generalized interventions to reduce transmission. We use our model to examine scenarios for the possibility of outbreak within the university community.
+Here we parameterize our model for a large state university, using the demographics and health statistics of the state of Georgia as an example. We assume the university will use testing and case isolation in combination with generalized interventions to reduce transmission. We use our model to examine scenarios for the possibility of outbreak within the university community.
 
 The essential disease parameters apply to any population. We assume an incubation period of `r 1/sigma` days, giving $\sigma=$ `r sigma` (@Zhang2020-ih, @Li2020-hc, @Lauer2020-mr).
 We assume that incubating infections are `r scales::percent(bL)` as contagious as symptomatic infections so $b_{L}=$ `r bL`.
@@ -292,18 +292,18 @@ We use a total university population of `r scales::comma(Ntot)`, `r scales::comm
 
 We assume a program of randomized surveillance (`r dailytests` tests per day) with isolation of symptomatic cases (cases detected as a result of testing or reporting). Thus, `r scales::comma(dailytests)` $\div$ `r scales::comma(Ntot)` $\approx$ `r scales::percent(xi, .1)` of the population will be tested daily, represented in the model by $\xi=$ `r xi`.
 
-The transmission rate $\beta$ within the university population is estimated from the expression for $\mathcal{R}_{0}$, by setting $\xi$ to 0 and solving for $\beta$, assuming the basic reproduction number in the absence of a testing program is $\mathcal{R}_{0}= 3.0$ @Park2020-vl.
+The transmission rate $\beta$ within the university population is estimated from the expression for $\mathcal{R}_{0}$, by setting $\xi$ to 0 and solving for $\beta$,
 
 \[
-\beta= \frac{\mathcal{R}_{0}}{N_{0}\left(1-a\right)\left[\frac{b_{L}}{\sigma}+\frac{1}{\gamma_{I}}\right]+\left(\frac{N_{0}ab_{A}}{\gamma_{A}}\right)}
+\beta= \frac{\mathcal{R}_{0}}{N_{0}\left(1-a\right)\left[\frac{b_{L}}{\sigma}+\frac{1}{\gamma_{I}}\right]+\left(\frac{N_{0}ab_{A}}{\gamma_{A}}\right)}.
 \]
 
-For the modeled university, the estimated transmission rate is $\beta =$ `r beta`.
+Our notional case assumes the basic reproduction number in the absence of a testing program is $\mathcal{R}_{0}= 3.0$ @Park2020-vl, although we relax this assumption in sensitivity analysis. For the notional case, the estimated transmission rate is $\beta =$ `r beta`.
 
 ### Interventions & Compliance
 
 The most challenging problem (and most speculative part of this analysis) is anticipating the effectiveness of a university's generalized interventions like reducing student and staff density, requiring students and staff to wear masks, and improving workplace hygiene through cleaning and disinfection, provision of hand sanitizer, and minimizing the use of shared resources like office supplies, refrigerators, and photocopiers.
-We do not currently have a reliable method to estimate the effectiveness of these interventions empirically, and instead estimate the effectiveness using a conceptual model that considers transmission across three basic interaction types by three primary transmission routes.
+We do not currently have a reliable method to estimate the effectiveness of these interventions empirically, and instead estimate effectiveness using a conceptual model that considers transmission across three basic interaction types by three primary transmission routes.
 How the three transmission routes contribute to overall transmission is not precisely known.
 We assume: (1) Aerosolized "airborne" transmission = `r scales::percent(trans_airborne)`, (2) Droplet transmission = `r scales::percent(trans_droplets)`, and (3) Contact surfaces = `r scales::percent(trans_contact)`.
 Masks reduce (1) and (2) by about `r scales::percent(reduction_masks)` and "healthy workplace" practices reduce (3) by about `r scales::percent(reduction_cleaning)` (@Offeddu2017-ae, @Bowen2010-ht, @Reynolds2016-oy).
@@ -311,7 +311,7 @@ Thus, with full compliance, interventions might reduce transmission by `r trans_
 
 We suppose compliance is based on transmission type.
 The three transmission types are: (1) student-student, (2) student-staff, and (3) staff-staff.
-For $m=$ `r scales::comma(N_stud)`  students and $n=$ `r scales::comma(N_staff)` staff, there are $m^2-m \approx 1.5 \text{ billion}$ possible student-student interactions, $m \times n \approx 422 \text{ million}$ student-staff interactions, and $n^2-n \approx 117 \text{ million}$ staff-staff interactions for a total of `r scales::comma(inter_tot)` possible interactions.
+For $m=$ `r scales::comma(N_stud)`  students and $n=$ `r scales::comma(N_staff)` staff, there are $m^2-m \approx 1.6 \text{ billion}$ possible student-student interactions, $m \times n \approx 400 \text{ million}$ student-staff interactions, and $n^2-n \approx 100 \text{ million}$ staff-staff interactions for a total of `r scales::comma(inter_tot)` possible interactions.
 Translated into percentages, student-student interactions are `r scales::percent(inter_stud_stud/inter_tot, .1)` of the total, student-staff interactions are `r scales::percent(inter_stud_staff/inter_tot, .1)` of the total, and staff-staff interactions are `r scales::percent(inter_staff_staff/inter_tot, .1)` of the total.
 We assume that mask and healthy workplace interventions have their estimated effectiveness at all times at which people are engaged in on-campus activities and that all student-staff and staff-staff interactions are on-campus activities, but that off-campus student-student interactions are non-compliant.
 We further assume that students spend `r hours_oncampus` hours per week engaged in on campus activities, $7 \times 8 =$ `r hours_sleep` hours per week sleeping, and the remaining $168~-$ `r hours_oncampus` $-$ `r hours_sleep` $=$ `r hours_offcampus` hours per week engaged in off campus activities.
@@ -395,7 +395,7 @@ p <- ggplot() +
   geom_line(data=data.frame(n,x2), aes(x = n, y = x2, color="High"), size=1.2) +
   xlab("Number of students in a class") +
   ylab("Probability") +
-  ggtitle("Probability that one or more students in a class is infected") +
+  ggtitle("Probability that a class contains an infected person") +
   labs(color = "Estimate")
 
 plot(p)
@@ -556,7 +556,7 @@ abline(v=0.245, col='#19bdc2', lty=2, lwd=2)
 abline(h=300,   col='#f37770', lty=2, lwd=2)
 lines(1-interventions$effectiveness, interventions$xi_c, type='l', lwd = 2)
 
-text(x=0.25, y=8900, 'Estimated current\nintervention effectiveness', col='#19bdc2', pos=4)
+text(x=0.25, y=8900, 'Estimated intervention effectiveness', col='#19bdc2', pos=4)
 text(x=0.7, y=700, 'Modeled testing level', col='#f37770', pos=4)
 
 ```
@@ -567,8 +567,8 @@ Uncertainty in the model parameters affects our confidence in these estimates.
 To understand the effects of such variation, we performed a sensitivity analysis of the critical testing rate.
 We measure sensitivity with partial rank correlation coefficients (PRCC) because these indices are independent of the relative magnitudes of the parameter values.
 
-To isolate the effect of uncertainty in epidemiological parameters on the critical testing rate, we fixed the transmission parameter $\beta$ so that $\mathcal{R}_0=3$ and incorporated uncertainty into the remaining epidemiological parameters.
-To represent this uncertainty, we sample from assumed uniform distributions representing the range of their possible values as follows: 
+To isolate the effect of uncertainty in epidemiological parameters on the critical testing rate, we varied the transmission parameter $\beta$ so that $\mathcal{R}_0$ ranged from $\mathcal{R}_0=2$ (optimistic) to $\mathcal{R}_0=4$ (pessimistic) and varied the remaining epidemiological parameters by +/- $`r scales::percent(variation)`$%.
+This was accomplished by Latin Hypercube sampling from uniform distributions representing the range of their possible values as follows: 
 
 $a\sim \operatorname{Uniform}($ `r a_min` $,$ `r a_max` $)$,  
 $b_L\sim \operatorname{Uniform}($ `r (1-variation)*bL` $,$ `r (1+variation)*bL` $)$,  
@@ -581,8 +581,8 @@ $S_0\sim \operatorname{Uniform}($ `r scales::comma(Ntot-imports_max-initial_remo
 Absent strong empirical evidence for the range of these values, the parameters 
 $b_L$, $b_A$, $\gamma_I$, and $\gamma_A$ are assumed to vary by `r scales::percent(variation)` from their baseline values.
 
-We performed Latin Hypercube Sampling with 200 samples to efficiently explore the effects of varying the parameter values on the critical testing rate (Fig. \ref{fig:xi-sensitivity}).
-In the absence of generalized interventions, the critical testing rate always exceeded $`r scales::comma(min(xi_c_samples),accuracy=.001)`$ per person per day, providing a lower bound of roughly $`r scales::comma(min(xi_c_samples),accuracy=.001)`\times$ `r scales::comma(Ntot)` $\approx$ `r scales::comma(round(min(xi_c_samples)*Ntot,-2))` individuals tested daily. When generalized interventions are incorporated, the lower bound is then roughly $`r scales::comma(min(xi_c_generalized_samples),accuracy=.001)`\times$ `r scales::comma(Ntot)` $\approx$ `r scales::comma(round(min(xi_c_generalized_samples)*Ntot,-2))` individuals tested daily.
+We performed Latin Hypercube sampling with $`r num_samples`$ samples to efficiently explore the effects of varying the parameter values on the critical testing rate (Fig. \ref{fig:xi-sensitivity}).
+In the absence of generalized interventions, the critical testing rate always exceeded $`r scales::comma(min(xi_c_samples),accuracy=.001)`$ per person per day, providing a lower bound of roughly $`r scales::comma(min(xi_c_samples),accuracy=.001) ` \times$ `r scales::comma(Ntot)` $\approx$ `r scales::comma(round(min(xi_c_samples)*Ntot,-2))` individuals tested daily. When generalized interventions are incorporated, the lower bound is then roughly $`r scales::comma(min(xi_c_generalized_samples),accuracy=.001) ` \times$ `r scales::comma(Ntot)` $\approx$ `r scales::comma(round(min(xi_c_generalized_samples)*Ntot,-2))` individuals tested daily.
 
 ```{r xi-sensitivity,  out.width='70%', fig.align='center', fig.cap='\\label{fig:xi-sensitivity}Uncertainty in the critical testing rate from a Latin Hypercube Sample of the model parameters. Blue bars show critical testing rates when generalized interventions are used. Red bars show critical testing rates without generalized interventions.'}
 
@@ -635,7 +635,7 @@ All parameters considered were significantly correlated to the critical testing 
 
 We infer that reducing the initial number of susceptible individuals on campus would not have a significant effect on the ability for a reduced rate of testing to control an epidemic. However, reducing the susceptible population should have an impact on the cumulative number of cases and daily new cases.
 
-We also explored the effects of varying the parameter values on the effective reproduction number $\mathcal{R}_\text{eff}$, assuming that the testing rate is $\xi = `r xi`$, with and without generalized interventions (Fig.~\ref{fig:re-sensitivity}). In the absence of generalized interventions, $\mathcal{R}_\text{eff}$ always exceeded $`r scales::comma(min(Reff_samples),accuracy=.001)`$. When generalized interventions are incorporated, the lower bound is then roughly $`r scales::comma(min(Reff_generalized_samples),accuracy=.001)`$. In either case, $\mathcal{R}_\text{eff}$ exceeds the critical threshold of one.
+We also explored the effects of varying the parameter values on the effective reproduction number $\mathcal{R}_\text{eff}$, assuming that the testing rate is $\xi = `r xi`$, with and without generalized interventions (Fig. \ref{fig:re-sensitivity}). In the absence of generalized interventions, $\mathcal{R}_\text{eff}$ always exceeded $`r scales::comma(min(Reff_samples),accuracy=.001)`$. When generalized interventions are incorporated, the lower bound is then roughly $`r scales::comma(min(Reff_generalized_samples),accuracy=.001)`$. In either case, $\mathcal{R}_\text{eff}$ exceeds the critical threshold of one.
 
 ```{r re-sensitivity,  out.width='70%', fig.align='center', fig.cap='\\label{fig:re-sensitivity}Uncertainty in the effective reproduction number from a Latin Hypercube Sample of the model parameters. Blue bars show estimates of the effective reproduction number when generalized interventions are used. Red bars show estimates of the effective reproduction number without generalized interventions.'}
 
@@ -690,6 +690,6 @@ As might be expected, $\mathcal{R}_\text{eff}$ is most strongly correlated with 
 
 Prior studies have suggested that testing to mitigate transmission would require testing all participants every 2 days @Paltiel2020-yp to 28 days @Bradley2020-ig. Both of these prior studies were based on a student population of around 5000. Our model, for a large institution of `r scales::comma(N_stud)` students and `r scales::comma(N_staff)` staff, suggests that successfully mitigating transmission at such an institution would require testing approximately `r scales::comma(round(critical.generalized*Ntot,-2))` persons per day, equivalent to testing each person every `r round(1/critical.generalized,1)` days. The already daunting operational logistics of such a program are further exacerbated by the currently limited supply of key reagents and materials (@Wu2020-bc, @Armour2020-pr) and the larger societal need to ethically and efficiently allocate limited testing resources to those with a medically-indicated need for testing and public health surveillance @American_Medical_Association2020-mi.
 
-Fig. \ref{fig:critical-xi} shows that actions to reduce transmission are not mutually exclusive and may be used in combination. For instance, a surveillance testing program may be combined with other interventions to achieve containment. Given current circumstances, increasing the effectiveness of interventions and limiting contact among students and between students and staff (for instance through the use of remote learning) appear to be the most promising means for effective containment of COVID-19 within institutions of higher education. In particular, we identify off-campus student-student interactions to be the arena of intervention with the greatest opportunity for significant reductions in transmission. The stabilization and reduction in transmission enjoyed by numerous states and municipalities during Spring 2020 show that containment through behavior change is possible even at very large scales.
+Fig. \ref{fig:critical-xi} shows that actions to reduce transmission are not mutually exclusive and may be used in combination. For instance, a surveillance testing program may be combined with other interventions to achieve containment. Given current circumstances, increasing the effectiveness of interventions and limiting contact among students appear to be the most promising means for effective containment of COVID-19 within institutions of higher education. We identify off-campus student-student interactions to be the arena of intervention with the greatest opportunity for significant reductions in transmission. Particularly, large group gatherings, parties, and congregations in bars, clubs, and other off-campus venues should be strongly discouraged or prohibited. The stabilization and reduction in transmission enjoyed by numerous states and municipalities during Spring 2020 show that containment through behavior change is possible even at very large scales.
 
 # References
